@@ -8,6 +8,22 @@ pub enum RawConnection {
     WebSocket(WebSocket<MaybeTlsStream<TcpStream>>),
 }
 
+fn write_all_nonblocking(stream: &mut TcpStream, mut data: &[u8]) -> std::io::Result<()> {
+    while !data.is_empty() {
+        match stream.write(data) {
+            Ok(0) => return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "failed to write whole buffer")),
+            Ok(n) => {
+                data = &data[n..];
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
 impl RawConnection {
     pub fn set_nonblocking(&self, nonblocking: bool) -> std::io::Result<()> {
         match self {
@@ -52,11 +68,25 @@ impl RawConnection {
         match self {
             RawConnection::Tcp(stream) => {
                 let len = data.len() as u32;
-                stream.write_all(&len.to_be_bytes()).map_err(|_| "TCP write prefix failed")?;
-                stream.write_all(data).map_err(|_| "TCP write payload failed")
+                write_all_nonblocking(stream, &len.to_be_bytes()).map_err(|_| "TCP write prefix failed")?;
+                write_all_nonblocking(stream, data).map_err(|_| "TCP write payload failed")
             }
             RawConnection::WebSocket(ws) => {
-                ws.send(tungstenite::Message::Binary(data.to_vec())).map_err(|_| "WS write failed")
+                match ws.send(tungstenite::Message::Binary(data.to_vec())) {
+                    Ok(_) => Ok(()),
+                    Err(tungstenite::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        loop {
+                            match ws.flush() {
+                                Ok(_) => return Ok(()),
+                                Err(tungstenite::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                    std::thread::sleep(std::time::Duration::from_millis(5));
+                                }
+                                Err(_) => return Err("WS write failed"),
+                            }
+                        }
+                    }
+                    Err(_) => Err("WS write failed"),
+                }
             }
         }
     }

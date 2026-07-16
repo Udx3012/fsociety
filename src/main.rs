@@ -360,8 +360,8 @@ fn network_send_loop(
         match cmd_rx.recv() {
             Ok(cmd) => {
                 if cmd.starts_with("/send ") {
-                    let filepath = cmd.strip_prefix("/send ").unwrap().trim();
-                    let path = std::path::Path::new(filepath);
+                    let filepath = cmd.strip_prefix("/send ").unwrap().trim().to_string();
+                    let path = std::path::Path::new(&filepath);
                     if !path.exists() {
                         let _ = event_tx.send(AppEvent::SystemMessage(format!("[ERROR] File not found: {}", filepath)));
                         continue;
@@ -375,72 +375,12 @@ fn network_send_loop(
                         }
                     };
 
-                    let _ = event_tx.send(AppEvent::SystemMessage(format!("[FILE] Outgoing file: {}", filename)));
-
-                    // 1. File Start Packet
-                    let mut start_payload = vec![0x02];
-                    start_payload.extend_from_slice(&file_size.to_be_bytes());
-                    start_payload.extend_from_slice(filename.as_bytes());
-                    if let Ok(ciphertext) = session.encrypt(&start_payload) {
-                        if let Ok(mut guard) = conn.lock() {
-                            if guard.write_packet(&ciphertext).is_err() { break; }
-                        }
-                    }
-
-                    // 2. Chunks Stream
-                    if let Ok(mut file) = std::fs::File::open(filepath) {
-                        let mut buffer = vec![0u8; 256 * 1024];
-                        let mut chunk_idx = 0u32;
-                        let mut bytes_sent = 0u64;
-                        let mut success = true;
-
-                        loop {
-                            use std::io::Read;
-                            match file.read(&mut buffer) {
-                                Ok(0) => break,
-                                Ok(n) => {
-                                    let mut chunk_payload = vec![0x03];
-                                    chunk_payload.extend_from_slice(&chunk_idx.to_be_bytes());
-                                    chunk_payload.extend_from_slice(&buffer[..n]);
-                                    if let Ok(ciphertext) = session.encrypt(&chunk_payload) {
-                                        if let Ok(mut guard) = conn.lock() {
-                                            if guard.write_packet(&ciphertext).is_err() {
-                                                success = false;
-                                                break;
-                                            }
-                                        } else {
-                                            success = false;
-                                            break;
-                                        }
-                                    } else {
-                                        success = false;
-                                        break;
-                                    }
-                                    chunk_idx += 1;
-                                    bytes_sent += n as u64;
-                                    let progress = if file_size > 0 { bytes_sent as f64 / file_size as f64 } else { 1.0 };
-                                    let _ = event_tx.send(AppEvent::FileProgress(filename.clone(), progress));
-                                }
-                                Err(_) => {
-                                    success = false;
-                                    break;
-                                }
-                            }
-                            thread::sleep(Duration::from_millis(1));
-                        }
-
-                        if success {
-                            let complete_payload = vec![0x04];
-                            if let Ok(ciphertext) = session.encrypt(&complete_payload) {
-                                if let Ok(mut guard) = conn.lock() {
-                                    let _ = guard.write_packet(&ciphertext);
-                                }
-                            }
-                            let _ = event_tx.send(AppEvent::SystemMessage(format!("[SUCCESS] Finished sending: {}", filename)));
-                        } else {
-                            let _ = event_tx.send(AppEvent::SystemMessage(format!("[ERROR] Transfer failed: {}", filename)));
-                        }
-                    }
+                    let conn_clone = Arc::clone(&conn);
+                    let session_clone = Arc::clone(&session);
+                    let event_tx_clone = event_tx.clone();
+                    thread::spawn(move || {
+                        send_file_worker(conn_clone, session_clone, event_tx_clone, filepath, filename, file_size);
+                    });
                 } else if cmd == "/exit" {
                     let exit_payload = vec![0x05];
                     if let Ok(ciphertext) = session.encrypt(&exit_payload) {
@@ -485,4 +425,85 @@ fn prompt_username(filename: &str) -> Result<String, Box<dyn std::error::Error>>
         let _ = file.write_all(username.as_bytes());
     }
     Ok(username)
+}
+
+fn send_file_worker(
+    conn: Arc<std::sync::Mutex<RawConnection>>,
+    session: Arc<crypto::SecureSession>,
+    event_tx: mpsc::Sender<AppEvent>,
+    filepath: String,
+    filename: String,
+    file_size: u64,
+) {
+    let _ = event_tx.send(AppEvent::SystemMessage(format!("[FILE] Outgoing file: {}", filename)));
+
+    // 1. File Start Packet
+    let mut start_payload = vec![0x02];
+    start_payload.extend_from_slice(&file_size.to_be_bytes());
+    start_payload.extend_from_slice(filename.as_bytes());
+    if let Ok(ciphertext) = session.encrypt(&start_payload) {
+        if let Ok(mut guard) = conn.lock() {
+            if guard.write_packet(&ciphertext).is_err() {
+                let _ = event_tx.send(AppEvent::SystemMessage(format!("[ERROR] Transfer failed: {}", filename)));
+                return;
+            }
+        }
+    }
+
+    // 2. Chunks Stream
+    if let Ok(mut file) = std::fs::File::open(&filepath) {
+        let mut buffer = vec![0u8; 256 * 1024];
+        let mut chunk_idx = 0u32;
+        let mut bytes_sent = 0u64;
+        let mut success = true;
+
+        loop {
+            use std::io::Read;
+            match file.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let mut chunk_payload = vec![0x03];
+                    chunk_payload.extend_from_slice(&chunk_idx.to_be_bytes());
+                    chunk_payload.extend_from_slice(&buffer[..n]);
+                    if let Ok(ciphertext) = session.encrypt(&chunk_payload) {
+                        if let Ok(mut guard) = conn.lock() {
+                            if guard.write_packet(&ciphertext).is_err() {
+                                success = false;
+                                break;
+                            }
+                        } else {
+                            success = false;
+                            break;
+                        }
+                    } else {
+                        success = false;
+                        break;
+                    }
+                    chunk_idx += 1;
+                    bytes_sent += n as u64;
+                    let progress = if file_size > 0 { bytes_sent as f64 / file_size as f64 } else { 1.0 };
+                    let _ = event_tx.send(AppEvent::FileProgress(filename.clone(), progress));
+                }
+                Err(_) => {
+                    success = false;
+                    break;
+                }
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        if success {
+            let complete_payload = vec![0x04];
+            if let Ok(ciphertext) = session.encrypt(&complete_payload) {
+                if let Ok(mut guard) = conn.lock() {
+                    let _ = guard.write_packet(&ciphertext);
+                }
+            }
+            let _ = event_tx.send(AppEvent::SystemMessage(format!("[SUCCESS] Finished sending: {}", filename)));
+        } else {
+            let _ = event_tx.send(AppEvent::SystemMessage(format!("[ERROR] Transfer failed: {}", filename)));
+        }
+    } else {
+        let _ = event_tx.send(AppEvent::SystemMessage(format!("[ERROR] Failed to open file: {}", filepath)));
+    }
 }

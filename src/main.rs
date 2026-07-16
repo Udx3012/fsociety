@@ -207,6 +207,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", format!(" [fsociety] SECURE SESSION ACTIVE. Fingerprint: {}", fingerprint).bright_green());
     thread::sleep(Duration::from_secs(1));
 
+    let _ = conn.set_nonblocking(true);
+
     // Channels for Event communication
     let (event_tx, event_rx) = mpsc::channel::<AppEvent>();
     let (cmd_tx, cmd_rx) = mpsc::channel::<String>();

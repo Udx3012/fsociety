@@ -14,7 +14,7 @@
 
 *   **🔒 Cryptographic E2EE (Zero-Trust)**: Uses an ephemeral X25519 Diffie-Hellman handshake to derive session keys on the fly, securing all communications with ChaCha20Poly1305 authenticated encryption.
 *   **⚡ Zero-Upload File Streaming**: Files are sent in real-time. The receiver downloads chunks as the sender uploads them, bypassing slow cloud staging services.
-*   **💾 Low Memory Overhead**: Files are streamed in 64KB chunks directly from disk. You can transfer multi-gigabyte files without bloat or high RAM utilization.
+*   **💾 Low Memory Overhead**: Files are streamed in 256KB chunks directly from disk. You can transfer large files without bloat or high RAM utilization.
 *   **🌐 Flexible Networking**:
     *   **Global Mode**: Uses a custom WebSocket relay server to stitch connections across firewalls and NATs.
     *   **Local Mode**: Establishes direct TCP connections on local networks.
@@ -126,7 +126,7 @@ Once you enter the secure interactive chat terminal:
 
 ## 🌐 Self-Hosting the Relay Server
 
-The relay server is a lightweight binary residing in [render-server/](file:///d:/node_prj/elliot/fsociety/render-server). You can easily deploy it on [Render.com](https://render.com) or any Linux VPS.
+The relay server is a lightweight binary residing in [render-server/](/render-server). You can easily deploy it on [Render.com](https://render.com) or any Linux VPS.
 
 ### Local Run
 ```bash
@@ -136,7 +136,7 @@ cargo run
 *The server starts listening on port `10000` (configurable via the `PORT` environment variable).*
 
 ### Deploy to Render
-We provide a [render.yaml](file:///d:/node_prj/elliot/fsociety/render-server/render.yaml) file for one-click setup:
+We provide a [render.yaml](/render.yaml) file for one-click setup:
 1.  Fork this repository.
 2.  Go to Render, create a new **Blueprint**, and connect your repository.
 3.  Deploy! It will automatically build and start the server.

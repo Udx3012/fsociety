@@ -158,8 +158,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}", format!(" [fsociety] Registering room code: {}", room).bright_green());
                 println!("{}", format!(" [fsociety] Target address: {}://{}/ws/{}", protocol, relay_host, room).green());
                 
-                // Print QR code for mobile web interface fallback
-                let _ = qr2term::print_qr(&format!("http://{}/room/{}", relay_host, room));
+
 
                 let conn = network::connect_ws(&wss_url)?;
                 (conn, room, "BLIND RELAY (WS)".to_string())

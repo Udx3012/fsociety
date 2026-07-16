@@ -389,7 +389,7 @@ fn network_send_loop(
 
                     // 2. Chunks Stream
                     if let Ok(mut file) = std::fs::File::open(filepath) {
-                        let mut buffer = vec![0u8; 64 * 1024];
+                        let mut buffer = vec![0u8; 256 * 1024];
                         let mut chunk_idx = 0u32;
                         let mut bytes_sent = 0u64;
                         let mut success = true;
@@ -426,7 +426,7 @@ fn network_send_loop(
                                     break;
                                 }
                             }
-                            thread::sleep(Duration::from_millis(5));
+                            thread::sleep(Duration::from_millis(1));
                         }
 
                         if success {

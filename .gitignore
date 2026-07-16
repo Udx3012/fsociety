@@ -1,0 +1,31 @@
+# Rust Build Artifacts
+target/
+**/target/
+*.rs.bk
+
+# Ephemeral / Received Files
+downloaded_*
+.fsociety_user
+
+# Demo and Temporary Files
+demo-*
+test-*
+
+# OS Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+
+# Logs
+*.log

@@ -1,0 +1,28 @@
+[package]
+name = "fsociety"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fsociety"
+path = "src/main.rs"
+
+[dependencies]
+sha2 = "0.10"
+qr2term = "0.3"
+colored = "2.0"
+indicatif = "0.17"
+ratatui = "0.26"
+crossterm = "0.27"
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+rand = "0.8"
+zeroize = { version = "1.7", features = ["derive"] }
+tungstenite = { version = "0.20", features = ["handshake", "rustls-tls-webpki-roots"] }
+url = "2.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

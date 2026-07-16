@@ -77,9 +77,9 @@ pub fn connect_tcp(addr: &str) -> Result<RawConnection, &'static str> {
     Ok(RawConnection::Tcp(stream))
 }
 
-pub fn connect_ws(url_str: &str) -> Result<RawConnection, &'static str> {
-    let url = url::Url::parse(url_str).map_err(|_| "Invalid WebSocket URL")?;
-    let (ws, _) = tungstenite::connect(url).map_err(|_| "WebSocket connection failed")?;
+pub fn connect_ws(url_str: &str) -> Result<RawConnection, Box<dyn std::error::Error>> {
+    let url = url::Url::parse(url_str)?;
+    let (ws, _) = tungstenite::connect(url)?;
     Ok(RawConnection::WebSocket(ws))
 }
 

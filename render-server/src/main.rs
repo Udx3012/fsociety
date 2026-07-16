@@ -21,9 +21,40 @@ struct FileEntry {
 }
 
 type Rooms = Arc<Mutex<HashMap<String, Room>>>;
-type WsRooms = Arc<Mutex<HashMap<String, WebSocket<TcpStream>>>>;
+
+struct PrefixedStream {
+    prefix: std::io::Cursor<Vec<u8>>,
+    inner: TcpStream,
+}
+
+impl Read for PrefixedStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.prefix.read(buf)?;
+        if n == 0 {
+            self.inner.read(buf)
+        } else {
+            Ok(n)
+        }
+    }
+}
+
+impl Write for PrefixedStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.inner.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl PrefixedStream {
+    fn set_nonblocking(&self, nonblocking: bool) -> std::io::Result<()> {
+        self.inner.set_nonblocking(nonblocking)
+    }
+}
 
 use tungstenite::protocol::WebSocket;
+type WsRooms = Arc<Mutex<HashMap<String, WebSocket<PrefixedStream>>>>;
 
 fn main() -> std::io::Result<()> {
     let port = std::env::var("PORT").unwrap_or_else(|_| "10000".to_string());
@@ -57,7 +88,11 @@ fn handle_http_client(mut stream: TcpStream, rooms: Rooms, ws_rooms: WsRooms) ->
     
     // Check if it's a WebSocket upgrade request (typically GET /ws/...)
     if method == "GET" && path.starts_with("/ws/") {
-        return handle_websocket(stream, path, ws_rooms);
+        let prefixed = PrefixedStream {
+            prefix: std::io::Cursor::new(buffer[..bytes_read].to_vec()),
+            inner: stream,
+        };
+        return handle_websocket(prefixed, path, ws_rooms);
     }
     
     match (method, path) {
@@ -70,7 +105,7 @@ fn handle_http_client(mut stream: TcpStream, rooms: Rooms, ws_rooms: WsRooms) ->
     }
 }
 
-fn handle_websocket(stream: TcpStream, path: &str, ws_rooms: WsRooms) -> std::io::Result<()> {
+fn handle_websocket(stream: PrefixedStream, path: &str, ws_rooms: WsRooms) -> std::io::Result<()> {
     let room_code = match path.strip_prefix("/ws/") {
         Some(code) => code.split('?').next().unwrap_or("").to_string(),
         None => return Ok(()),

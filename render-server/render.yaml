@@ -3,8 +3,8 @@ services:
     name: fsociety-relay
     env: rust
     runtime: rust
-    buildCommand: cargo build --release
-    startCommand: ./target/release/render-server
+    buildCommand: cargo build --release --manifest-path render-server/Cargo.toml
+    startCommand: ./render-server/target/release/render-server
     plan: free
     envVars:
       - key: PORT
